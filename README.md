@@ -24,7 +24,7 @@ In short, you will basically have to: (You can skip this paragraph if you want t
 
 ## A brief introduction on GLFW
 
-For reference, here are the two functions you would like to write C FFIs to:
+For reference, here are the functions you would like to bind to:
 ```c
 // Initializes the GLFW library.
 // `GLFW_TRUE` if successful, or `GLFW_FALSE` if an error occurred.
@@ -51,8 +51,6 @@ int glfwWindowShouldClose(GLFWwindow *window);
 ```
 
 Here is a basic GLFW example that creates a blank GLFW window and ends when the user closes the window.
-
-Our goal will be to do this in "pure Lean4".
 ```c
 #include <GLFW/glfw3.h>
 #include <stdlib.h>
@@ -73,10 +71,11 @@ int main() {
   printf("Goodbye.\n");
 }
 ```
+Our goal will be to rewrite this program in "pure Lean4".
 
 # Writing the FFI
 
-Suppose in the beginning, you did `lake init` and get the following:
+Suppose in the beginning, you did `$ lake init` and get the following:
 
 ```
 .
@@ -186,7 +185,7 @@ Now: what is going on with `./native.c` and those `@[extern "XXX"]` opaque defin
 
 In `./Main.lean`:
   1. Each `@[extern <func_name>]` marked opaque function in `./Main.lean` corresponds to a function with the name `<func_name>` defined in `./native.c`.
-  2. The `WindowP` and `Window` part in `./Main.lean` is simply written that to define an opaque type. I don't have an explanation as to why it is written like this, so just copy it and change the names for other opaque C types.
+  2. The `WindowP` and `Window` part in `./Main.lean` will become apparent later when we start passing `GLFWwindow *` objects around between Lean4 and C. I don't have an explanation as to why it is written like this, so just copy it and change the names for other opaque C types.
 
 Now, let's take a look at `./native.c`, we will first inspect `lean_glfwInit`:
 
@@ -200,7 +199,7 @@ lean_obj_res lean_glfwInit(lean_obj_arg world) {
 ```
 `lean_glfwInit` corresponds to `opaque glfwInit : IO Bool` in our `./Main.lean` as indicated by marking our Lean4 function `@[extern "lean_glfwInit"]`. Whenever we call `opaque glfwInit : IO Bool` in our Lean4 program, `lean_glfwInit` from `./native.c` will be called.
 
-Let's examine `lean_glfwInit`'s function signature: you can see the function takes in one `lean_obj_arg` and and returns a `lean_obj_res`. These are Lean4 objects, the typedefs come from `#include <lean/lean.h>`.
+Let's examine `lean_glfwInit`'s function signature: you can see the function takes in one `lean_obj_arg` and returns a `lean_obj_res`. These are Lean4 objects, the typedefs come from `#include <lean/lean.h>`.
   - Side note: When `lake` compiles `./native.c`, `#include <lean/lean.h>` will point to the file `src/include/lean/lean.h` as defined in https://github.com/leanprover/lean4/blob/master/src/include/lean/lean.h.
 
 In fact, `lean_obj_arg` and `lean_obj_res` are just aliases to the type `lean_object *`. Here are their definitions ripped out from `lean/lean.h`:
@@ -214,7 +213,7 @@ typedef lean_object * lean_obj_res;   /* Standard object result. */
 typedef lean_object * b_lean_obj_res; /* Borrowed object result. */
 ```
 
-and here is `lean_object`'s definition for fun:
+and here is `lean_object`'s definition if you are curious:
 ```c
 typedef struct {
     int      m_rc;
@@ -228,41 +227,61 @@ Do be informed that Lean4's usages of `lean_object` and `lean_object *` are non-
 
 Before explaining more on `lean_glfwInit`'s actual function signature, observe the following translations between Lean4 function types and C function types:
 
+A function that takes in **no arguments** and returns `Unit`.
 ```c
 // @[extern "foo1"]
 // opaque foo1 : Unit
 lean_obj_res foo1();
 // [!] Returning a `Unit` requires returning a `lean_obj_res`.
+```
 
+Like `foo1` but takes in a `Unit`.
+```c
 // @[extern "foo2"]
 // opaque foo2 : (a : Unit) -> Unit
 lean_obj_res foo2(lean_obj_arg a);
 // [!] Taking in 1 argument.
+```
 
+...and now 3 `Unit`s.
+```c
 // @[extern "foo3"]
 // opaque foo3 : (a : Unit) -> (b : Unit) -> (c : Unit) -> Unit
 lean_obj_res foo3(lean_obj_arg a, lean_obj_arg b, lean_obj_arg c);
 // [!] Taking in 3 arguments.
+```
 
+Here is a function with some "special Lean4 types" (`uint8_t`, `uint32_t`).
+```c
 // @[extern "foo4"]
 // opaque foo4 : (a : UInt8) -> (b : UInt32) -> (c : Unit) -> Unit
 lean_obj_res foo4(uint8_t a, uint32_t b, lean_obj_arg c);
 // [!] Certain Lean4 types have special translations
 //     Please see https://lean-lang.org/lean4/doc/dev/ffi.html#translating-types-from-lean-to-c for a complete(?) list.
 //     Here, UInt8 maps to uint8_t, and UInt32 maps to uint32_t.
+```
 
+..and here is one that takes in a `Bool`, which is mapped to `uint8_t`. It is one of the "special Lean4 types" as well.
+```c
 // @[extern "foo5"]
 // opaque foo5 : (mybool : Bool) -> Unit
 lean_obj_res foo5(uint8_t mybool);
 // [!] Bool is mapped to uint8_t, where 0 is false and 1 is true.
 //     See https://lean-lang.org/lean4/doc/dev/ffi.html#translating-types-from-lean-to-c.
+```
 
+Here is a function that takes in `uint8_t` (a special type) and returns `uint16_t` (another special type). Notice that we are not returning a `lean_obj_res`. (TODO: cite an official reference on this behaviour, I learnt this through experimenting with FFIs and see what segfaults.)
+```c
 // @[extern "foo6"]
 // opaque foo6 : (mybool : Bool) -> UInt16
 uint16_t foo6(uint8_t mybool);
 // [!] Returning a uint16_t instead of the usual `lean_obj_res` here because UInt16 translates to uint16_t.
 //     See https://lean-lang.org/lean4/doc/dev/ffi.html#translating-types-from-lean-to-c.
+```
 
+**`foo7` is the most important example. It does I/O.**
+
+```c
 // @[extern "foo7"]
 // opaque foo7 : (mybool : Bool) -> IO Unit
 lean_obj_res foo7(uint8_t mybool, lean_obj_arg world);
@@ -270,9 +289,13 @@ lean_obj_res foo7(uint8_t mybool, lean_obj_arg world);
 //     Lean4 expects them to take in an extra lean_obj_arg,
 //       and they *MUST* return a lean_obj_res.
 // =======================================================================================
-// I have been able to find an official explanation for this seemingly strange function signature.
+// I have not been able to find an official explanation for this seemingly strange function signature.
 // But here is my guess:
-//   Consider that in Lean4, we have:
+//
+//   Since we have:
+//     opaque foo7 : (mybool : Bool) -> IO Unit
+//
+//   Consider that, in Lean4:
 //     abbrev IO : Type → Type := EIO Error
 //     def EIO (ε : Type) : Type → Type := EStateM ε IO.RealWorld
 //     def IO.RealWorld : Type := Unit
@@ -280,20 +303,33 @@ lean_obj_res foo7(uint8_t mybool, lean_obj_arg world);
 //     inductive Result (ε σ α : Type u) where
 //       | ok    : α → σ → Result ε σ α
 //       | error : ε → σ → Result ε σ α
+//
 //   This means that:
 //       IO a
 //     = EIO Error a
 //     = EStateM Error IO.RealWorld a
 //     = IO.RealWorld -> Result Error IO.RealWorld a
-//     = Unit         -> Result Error Unit         a
+//     = Unit -> Result Error Unit a (IO.RealWorld is just Unit)
+//
 //   Therefore,
 //       foo7 : (mybool : Bool) -> IO Unit
 //     = foo7 : (mybool : Bool) -> IO.RealWorld -> Result Error IO.RealWorld Unit
-//     = foo7 : (mybool : Bool) -> Unit -> Result Error Unit Unit
+//     = foo7 : (mybool : Bool) -> (world : Unit) -> Result Error Unit Unit
+//              ^^^^^^^^^^^^^^^    ^^^^^^^^^^^^^^
+//              first arg          second arg
+//
+//   This matches what we need for foo7, two arguments:
+//     lean_obj_res foo7(uint8_t mybool, lean_obj_arg world);
+//                       ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+//                       first arg       second arg
+//
 //   This also implies that the returned `lean_obj_res` will in fact be a `Result` object,
 //     and indeed we will later see that we will use functions like `lean_io_result_mk_ok`
 //     to construct `Result` Lean4 objects and return them back to our Lean4 program.
+```
 
+Here is another IO function, it returns a `UInt32` (a special type), but in fact we return a `lean_obj_res` unlike `foo6` because IO functions return a `Result` object.
+```c
 // @[extern "foo8"]
 // opaque foo8 : (mybool : Bool) -> IO UInt32
 lean_obj_res foo8(uint8_t mybool, lean_obj_arg world);
