@@ -1,26 +1,26 @@
 # Notes on doing C FFI in Lean4
-There seems to be no complete tutorial on creating C FFI bindings in Lean4. So I am writing notes here. I am putting the phrase "tutorial" in the GitHub project name just so people who search "Lean4 FFI tutorial" will land on this and hopefully get some guidances, but by no means does this markdown serve as a complete, 100%, correct tutorial. I don't even know what is going on half of the time with reading the sources:
+There seems to be no complete tutorial on creating C FFI bindings in Lean4. So I am writing notes here. I am putting the keyword "tutorial" in the GitHub project name just so people who search "Lean4 FFI tutorial" will land on this and hopefully get some guidances, but by no means does this markdown serve as a complete, 100% correct tutorial. I don't even know what is going on half of the time when reading the sources:
 - `src/include/lean/lean.h` in https://github.com/leanprover/lean4
-- https://lean-lang.org/lean4/doc/dev/ffi.html (it seems to be outdated as it uses a keyword called `constant`, which does not actually exist in Lean4?).
+- https://lean-lang.org/lean4/doc/dev/ffi.html (it seems to be outdated as it uses a keyword called `constant`, which does not actually exist in Lean4).
 - https://github.com/leanprover/lean4/tree/master/src/lake/examples/ffi
 
 
 ## Introduction
 
-(This section might need you to have some understanding in writing C FFIs in Haskell, or maybe writing language bindings in general. Otherwise you might have no idea what is going on or why are things the way they are.)
+(This section might need you to have some understanding in writing C FFIs in Haskell, or writing language bindings in general. Otherwise you might have no idea what is going on or why are things the way they are.)
 
 Say you would like to write some C FFI bindings in Lean4 to [`libglfw.so`](https://www.glfw.org), a popular C library for creating windows and OpenGL contexts. Let's also say you plan to create Lean4 bindings to `glfwInit`, `glfwTerminate`, `glfwPollEvents`, `glfwCreateWindow` and `glfwWindowShouldClose`. In fact, I picked these examples because:
   - `glfwInit`, `glfwTerminate`, and `glfwPollEvents` are simple functions, great for an introduction to writing Lean4 bindings.
-  - `glfwCreateWindow` involves passing an opaque object from the C world to the Lean4 world. This also showcases how to pass `String`s from Lean4 to C.
-  - `glfwWindowShouldClose` involves passing an opaque object from the Lean4 world to the C world.
+  - `glfwCreateWindow` involves passing an opaque object from C to Lean4. I will also demonstrate how to pass `String`s from Lean4 to C.
+  - `glfwWindowShouldClose` involves passing an opaque object from Lean4 to C.
   - They provide the minimal set of functionalities to create a working GLFW window.
 
-In short, you will basically have to: (You can skip this paragraph if you want to and move on to the steps to creating FFIs for GLFW right now)
+In short, you will basically have to: (You can skip this paragraph if you want and move on to the steps to creating FFIs for GLFW right now)
 1. Write a `.c` source file providing the right functions and function signatures that compiled Lean4 programs know how to talk to.
 2. Modify your `lakefile.lean` to...
     1. compile the `.c` file to produce a static lib,
-    2. add the necessary compilation/linking flags to link `libglfw.so` and the static lib of the `.c` to your Lean4 application executable whenever you do `$ lake build`.
-3. Write `opaque` Lean4 definitions in a `.lean` module in your Lean4 project that point to the certain functions written in that `.c` file. You might also have to define some opaque structures if the FFI functions return pointers to, say, a handle object in the C world.
+    2. and add the necessary compilation/linking flags to link `libglfw.so` and the static lib of the `.c` to your Lean4 application executable whenever you do `$ lake build`.
+3. Write `opaque` Lean4 definitions in a `.lean` module in your Lean4 project that point to the certain functions written in that `.c` file. You might also have to define some opaque structures if the FFI functions return pointers to, say, a C handle object.
 
 ## A brief introduction on GLFW
 
@@ -50,7 +50,7 @@ void glfwPollEvents(void);
 int glfwWindowShouldClose(GLFWwindow *window);
 ```
 
-Here is a basic GLFW example that creates a blank GLFW window and ends when the user closes the window.
+Here is a basic GLFW example that creates a blank GLFW window and ends when the user closes the GLFW window:
 ```c
 #include <GLFW/glfw3.h>
 #include <stdlib.h>
@@ -74,6 +74,8 @@ int main() {
 Our goal will be to rewrite this program in "pure Lean4".
 
 # Writing the FFI
+
+## Setup
 
 Suppose in the beginning, you did `$ lake init` and get the following:
 
@@ -143,7 +145,7 @@ lean_obj_res lean_glfwPollEvents(lean_obj_arg world) {
 }
 ```
 
-After that, modify your `./lakefile.lean` to automatically compile `./native.c` and link that and `libglfw.so` to your Lean4 application executable for future `$ lake build` calls. Here is an example:
+After that, modify your `./lakefile.lean` to automatically compile `./native.c` and link the generated static lib and `libglfw.so` to your Lean4 application executable for future `$ lake build` calls. Here is an example:
 
 ```
 import Lake
@@ -156,8 +158,6 @@ package «YourProjectName» where
 lean_exe «glfw_test_exe» where
   root := `Main
   moreLinkArgs := #["-lglfw", "-Wl,--allow-shlib-undefined"] -- To link `libglfw.so` to your Lean4 app exe.
-
--- ## The interesting parts are below:
 
 -- Create target named `native.o` by compile `./native.c`
 -- Honestly, this is kind of like writing Makefiles
@@ -188,19 +188,19 @@ In `./Main.lean`:
   1. Each `@[extern <func_name>]` marked opaque function in `./Main.lean` corresponds to a function with the name `<func_name>` defined in `./native.c`.
   2. The `WindowP` and `Window` part in `./Main.lean` will become apparent later when we start passing `GLFWwindow *` objects around between Lean4 and C. I don't have an explanation as to why it is written like this, so just copy it and change the names for other opaque C types.
 
-Now, let's take a look at `./native.c`, we will first inspect `lean_glfwInit`:
+Now, let's take a look at `./native.c`. We will first inspect `lean_glfwInit`:
 
 ```c
 // Lean4's counterpart in ./Main.lean:
 //   @[extern "lean_glfwInit"]
 //   opaque glfwInit : IO Bool
 lean_obj_res lean_glfwInit(lean_obj_arg world) {
-  // TODO: supposely we will call glfwInit() here and return the initialization status code back as a Bool...
+  // TODO: we will call glfwInit() here and return the initialization status code back as a Bool
 }
 ```
-`lean_glfwInit` corresponds to `opaque glfwInit : IO Bool` in our `./Main.lean` as indicated by marking our Lean4 function `@[extern "lean_glfwInit"]`. Whenever we call `opaque glfwInit : IO Bool` in our Lean4 program, `lean_glfwInit` from `./native.c` will be called.
+`lean_glfwInit` corresponds to `opaque glfwInit : IO Bool` in our `./Main.lean` as indicated by us marking the Lean4 function `@[extern "lean_glfwInit"]`. Whenever we call `opaque glfwInit : IO Bool` in our Lean4 program, `lean_glfwInit` from `./native.c` will be called.
 
-Let's examine `lean_glfwInit`'s function signature: you can see the function takes in one `lean_obj_arg` and returns a `lean_obj_res`. These are Lean4 objects, the typedefs come from `#include <lean/lean.h>`.
+In `lean_glfwInit`'s function signature, you can see that the function takes in one `lean_obj_arg` and returns a `lean_obj_res`. These are Lean4 objects, the typedefs come from `#include <lean/lean.h>`.
   - Side note: When `lake` compiles `./native.c`, `#include <lean/lean.h>` will point to the file `src/include/lean/lean.h` as defined in https://github.com/leanprover/lean4/blob/master/src/include/lean/lean.h.
 
 In fact, `lean_obj_arg` and `lean_obj_res` are just aliases to the type `lean_object *`. Here are their definitions ripped out from `lean/lean.h`:
@@ -236,7 +236,7 @@ lean_obj_res foo1();
 // [!] Returning a `Unit` requires returning a `lean_obj_res`.
 ```
 
-Like `foo1` but takes in a `Unit`.
+A function that takes in a `Unit` and returns `Unit`.
 ```c
 // @[extern "foo2"]
 // opaque foo2 : (a : Unit) -> Unit
@@ -244,7 +244,7 @@ lean_obj_res foo2(lean_obj_arg a);
 // [!] Taking in 1 argument.
 ```
 
-...and now 3 `Unit`s.
+...and now 3 `Unit`s as input.
 ```c
 // @[extern "foo3"]
 // opaque foo3 : (a : Unit) -> (b : Unit) -> (c : Unit) -> Unit
@@ -252,7 +252,7 @@ lean_obj_res foo3(lean_obj_arg a, lean_obj_arg b, lean_obj_arg c);
 // [!] Taking in 3 arguments.
 ```
 
-Here is a function with some "special Lean4 types" (`uint8_t`, `uint32_t`).
+Here is a function with "special Lean4 types" (`uint8_t`, `uint32_t`).
 ```c
 // @[extern "foo4"]
 // opaque foo4 : (a : UInt8) -> (b : UInt32) -> (c : Unit) -> Unit
@@ -262,22 +262,21 @@ lean_obj_res foo4(uint8_t a, uint32_t b, lean_obj_arg c);
 //     Here, UInt8 maps to uint8_t, and UInt32 maps to uint32_t.
 ```
 
-..and here is one that takes in a `Bool`, which is mapped to `uint8_t`. It is one of the "special Lean4 types" as well.
+..and here is one that takes in a `Bool`, which is mapped to `uint8_t`. It is also a "special Lean4 type".
 ```c
 // @[extern "foo5"]
 // opaque foo5 : (mybool : Bool) -> Unit
 lean_obj_res foo5(uint8_t mybool);
-// [!] Bool is mapped to uint8_t, where 0 is false and 1 is true.
+// [!] Bool maps to uint8_t, where 0 is false and 1 is true.
 //     See https://lean-lang.org/lean4/doc/dev/ffi.html#translating-types-from-lean-to-c.
 ```
 
-Here is a function that takes in `uint8_t` (a special type) and returns `uint16_t` (another special type). Notice that we are not returning a `lean_obj_res`. (TODO: cite an official reference on this behaviour, I learnt this through experimenting with FFIs and see what segfaults.)
+Here is a function that takes in `uint8_t` (a special Lean4 type) and returns `uint16_t` (another special Lean4 type). Notice that we are not returning a `lean_obj_res`, but a `uint16_t`. (TODO: cite an official reference on this behaviour, I learnt this through experimenting with FFIs and see what segfaults.)
 ```c
 // @[extern "foo6"]
 // opaque foo6 : (mybool : Bool) -> UInt16
 uint16_t foo6(uint8_t mybool);
 // [!] Returning a uint16_t instead of the usual `lean_obj_res` here because UInt16 translates to uint16_t.
-//     See https://lean-lang.org/lean4/doc/dev/ffi.html#translating-types-from-lean-to-c.
 ```
 
 **`foo7` is the most important example. It does I/O.**
@@ -293,7 +292,7 @@ lean_obj_res foo7(uint8_t mybool, lean_obj_arg world);
 // I have not been able to find an official explanation for this seemingly strange function signature.
 // But here is my guess:
 //
-//   Since we have:
+//   We have:
 //     opaque foo7 : (mybool : Bool) -> IO Unit
 //
 //   Consider that, in Lean4:
@@ -319,7 +318,7 @@ lean_obj_res foo7(uint8_t mybool, lean_obj_arg world);
 //              ^^^^^^^^^^^^^^^    ^^^^^^^^^^^^^^
 //              first arg          second arg
 //
-//   This matches what we need for foo7, two arguments:
+//   This matches what we see in foo7's type signature:
 //     lean_obj_res foo7(uint8_t mybool, lean_obj_arg world);
 //                       ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
 //                       first arg       second arg
@@ -339,7 +338,7 @@ lean_obj_res foo8(uint8_t mybool, lean_obj_arg world);
 //       will contain our uint32_t result.
 ```
 
-Hopefully you can see now why `lean_glfwInit` has this type signature:
+Now, hopefully you can see now why `lean_glfwInit` has this type signature:
 ```c
 // @[extern "lean_glfwInit"]
 // opaque glfwInit : IO Bool
@@ -348,9 +347,9 @@ lean_obj_res lean_glfwInit(lean_obj_arg world);
 
 ## Implementing `lean_glfwInit()`
 
-***DISCLAIMER: THE FOLLOWING DETAILS COULD BE VERY, VERY WRONG.*** But the final Lean4/C code does produce a working GLFW program.
+***DISCLAIMER: THE FOLLOWING DETAILS COULD BE VERY, VERY WRONG,*** but the final code does produce a working GLFW program.
 
-Let's finally implement `lean_glfwInit`.
+Let's implement `lean_glfwInit`:
 ```c
 lean_obj_res lean_glfwInit(lean_obj_arg world) {
   // `world` is unused.
@@ -359,24 +358,21 @@ lean_obj_res lean_glfwInit(lean_obj_arg world) {
 }
 ```
 
-Here, we do `glfwInit()`, and we called some functions provided by `lean/lean.h` to build a `lean_obj_res` for our `Result` object as required by `IO` functions, where...
-
+Here, we call `glfwInit()`, and call some functions provided by `lean/lean.h` to build a `lean_obj_res` as a Lean4 `Result` object as required by `IO` functions, where...
 ```c
 // Construct a `lean_object *` representing `Result.ok r ()`
-//   The () here represents an instance of IO.RealWorld (Recall that `def IO.RealWorld : Type := Unit`),
-bool lean_io_result_mk_ok(b_lean_obj_arg r); // You can treat b_lean_obj_arg as lean_obj_arg for now
+lean_obj_res lean_io_result_mk_ok(lean_obj_arg r);
 
 // Construct a `lean_object *` representing the signed integer n
 lean_object * lean_box(size_t n);
 ```
 
-Hopefully this is enough to explain why we are writing this:
+Hopefully this is enough to explain why we are writing this to build our `lean_obj_res`:
 ```c
 return lean_io_result_mk_ok(lean_box(result)); // ~ Result IO.Error IO.RealWorld Bool
 ```
-...to build our `lean_obj_res`.
 
-You can now test out `opaque glfwInit : IO Bool` in `./Main.lean` with this:
+You can now try using `opaque glfwInit : IO Bool` in `./Main.lean`:
 ```
 @[extern "lean_glfwInit"]
 opaque glfwInit : IO Bool
@@ -445,23 +441,22 @@ static lean_external_class *get_glfw_window_class() {
 lean_obj_res lean_glfwCreateWindow(uint32_t width, uint32_t height, b_lean_obj_arg title, lean_obj_arg world) {
   printf("lean_glfwCreateWindow %dx%d\n", width, height); // Here for debugging
   char const *title_cstr = lean_string_cstr(title); // Read below for what `lean_string_cstr` does
-  GLFWwindow *win = glfwCreateWindow(width, height, title, NULL, NULL); // Returns (GLFWwindow *)!
+  GLFWwindow *win = glfwCreateWindow(width, height, title, NULL, NULL); // Returns (GLFWwindow *) -- an opaque type!
   return lean_io_result_mk_ok(lean_alloc_external(get_glfw_window_class(), win));
 }
 
 // where...
-char const * lean_string_cstr(b_lean_obj_arg o);
+
 // Suppose o is a `String` Lean4 object, get the pointer pointing to the UTF8 bytes of the String.
+char const * lean_string_cstr(b_lean_obj_arg o);
 ```
 
-Here, we see new functions related to handling constructing `lean_object *` from custom pointers (e.g., `GLFWwindow *`):
+Here, we see new functions related to constructing `lean_object *` from custom pointers (e.g., `GLFWwindow *`):
 - `lean_alloc_external`
 - `lean_external_class`
 - `lean_register_external_class`
 
 You already know what `lean_io_result_mk_ok` does.
-
-I will first elaborate on `lean_alloc_external`, and then move on to `get_glfw_window_class()`.
 
 ### On `lean_alloc_external()` and `lean_external_class`
 
@@ -474,9 +469,9 @@ Here is the function signature of `lean_alloc_external` from `lean/lean.h`:
 lean_object * lean_alloc_external(lean_external_class *cls, void *data);
 ```
 
-`lean_external_class` is used by Lean4 internally to understand more about the `void *data` you pass in. It *apparently* serve two purposes:
-1. How to deallocate/finalize `data` when the `lean_object *` goes out of scope in your Lean4 program.
-2. (My guess) How to iterate over `data`. (Like how you can have `char *c` and do `c + 3` to get the address of the 3rd `char` by displacement.)
+`lean_external_class` is used by Lean4 internally to understand more about the `void *data` you pass in. It *apparently* two purposes:
+1. to tell how to deallocate/finalize `data` when the `lean_object *` goes out of scope in your Lean4 program,
+2. (My guess) to tell how to iterate over `data`. (Like how you can have `char *c` and do `c + 3` to get the address of the 3rd `char` by displacement.)
 
 Here is the definition of `lean_external_class` if that is of any help:
 ```c
@@ -493,7 +488,7 @@ It is okay if you don't understand what `lean_external_class` actually does, bec
 
 ### On `lean_register_external_class()` and `get_glfw_window_class()`
 
-Anyway, recall that to create a `lean_object *` out of `GLFWwindow *win`, we need to do `lean_alloc_external(get_glfw_window_class(), win)`, which then will be wrapped by `lean_lean_io_result_mk_ok`. Now, I will explain the `get_glfw_window_class()` part.
+Anyway, recall that to create a `lean_object *` out of `GLFWwindow *win`, we need to do `lean_alloc_external(get_glfw_window_class(), win)`, which then will be wrapped by `lean_lean_io_result_mk_ok`. Having already explained what `lean_alloc_external()` is, I will now explain the `get_glfw_window_class()` part.
 
 Here is the function `get_glfw_window_class` again:
 ```c
@@ -513,10 +508,11 @@ static lean_external_class *get_glfw_window_class() {
 typedef void (*lean_external_finalize_proc)(void *);
 typedef void (*lean_external_foreach_proc)(void *, b_lean_obj_arg);
 
+// Creates a (lean_external_class *), for use in lean_alloc_external()
 lean_external_class * lean_register_external_class(lean_external_finalize_proc, lean_external_foreach_proc);
 ```
 
-Essentially, we are calling `lean_register_external_class` to tell Lean4 to create a `lean_external_class` representing `GLFWwindow *` with `glfw_window_finalizer` as its finalizer,
+In `get_glfw_window_class`, essentially, we are calling `lean_register_external_class` to tell Lean4 to create a `lean_external_class` representing `GLFWwindow *` with `glfw_window_finalizer` as its finalizer and `noop_foreach` as its "foreach" part,
 
 where `glfw_window_finalizer` is defined as...
 ```c
@@ -527,12 +523,14 @@ static void glfw_window_finalizer(void *ptr) {
 }
 ```
 
-...and `noop_foreach` for its foreach part, and here `noop_foreach` actually does nothing because `GLFWwindow *` points to an handle object instead of the start of an array of something.
+...and `noop_foreach` is defined as:
 ```c
 static void noop_foreach(void *data, b_lean_obj_arg arg) {
   // NOTHING
 }
 ```
+
+I am using `noop_foreach` for the `lean_external_class` representing `GLFWwindow *` here because `GLFWwindow *` points to an handle object instead of the start of an array of something. There is no need for a "foreach" functionality.
 
 `get_glfw_window_class` is also written in such a way that the first call to `get_glfw_window_class` will register the `lean_external_class` that represents `GLFWwindow *` and return it, and subsequent classes will return the already created `lean_external_class`. I am making use of a function-scoped `static` variable here to do this trick.
 
@@ -540,7 +538,7 @@ Now, this should clarify what `lean_glfwCreateWindow` does.
 
 ### On `Window`, `WindowP` and the `GLFWwindow *` opaque type
 
-As for the opaque `Window`/`WindowP` definition in our `./Main.lean`, we as programmers will have to make sure that whenever a `GLFWwindow *` is the return type or a parameter type in our functions, we will use the **same** name in our Lean4 code. That is:
+As for the opaque `Window`/`WindowP` definition in our `./Main.lean`, we as programmers will have to make sure that whenever a `GLFWwindow *` is the return type or a argument type in our functions, we will must use `Window` in our Lean4 code.
 
 ```
 opaque WindowP : NonemptyType
@@ -576,11 +574,11 @@ void * lean_get_external_data(lean_object * o);
 
 Hopefully you can understand the definition `lean_glfwWindowShouldClose` without any explanations now.
 
-And this is it!
+And that is it!
 
 ## GLFW in Lean4
 
-We can now implement this:
+We can now implement the following C code:
 ```c
 #include <GLFW/glfw3.h>
 #include <stdlib.h>
