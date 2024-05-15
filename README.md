@@ -1,4 +1,4 @@
-# Notes on doing FFI
+# Notes on doing C FFI in Lean4
 There seems to be no complete tutorial on creating C FFI bindings in Lean4. So I am writing notes here. I am putting the phrase "tutorial" in the GitHub project name just so people who search "Lean4 FFI tutorial" will land on this and hopefully get some guidances, but by no means does this markdown serve as a complete, 100%, correct tutorial. I don't even know what is going on half of the time with reading the sources:
 - `src/include/lean/lean.h` in https://github.com/leanprover/lean4
 - https://lean-lang.org/lean4/doc/dev/ffi.html (it seems to be outdated as it uses a keyword called `constant`, which does not actually exist in Lean4?).
