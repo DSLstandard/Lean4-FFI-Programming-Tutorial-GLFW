@@ -371,8 +371,8 @@ lean_obj_res lean_glfwTerminate(lean_obj_arg world) {
 // opaque glfwPollEvents : IO Unit
 lean_obj_res lean_glfwPollEvents(lean_obj_arg world) {
   // In fact, `world` is also just lean_box(0)... I think.
-	glfwPollEvents();
-	return lean_io_result_mk_ok(lean_box(0));
+  glfwPollEvents();
+  return lean_io_result_mk_ok(lean_box(0));
 }
 ```
 
@@ -380,32 +380,32 @@ Let's get to `glfwCreateWindow`. Here, things get more complicated because we ha
 
 ```c
 static void noop_foreach(void *data, b_lean_obj_arg arg) {
-	// NOTHING
+  // NOTHING
 }
 
 static void glfw_window_finalizer(void *ptr) {
-	glfwDestroyWindow((GLFWwindow *) ptr);
+  glfwDestroyWindow((GLFWwindow *) ptr);
 }
 
 // opaque WindowP : NonemptyType
 // def Window := WindowP.type
 static lean_external_class *get_glfw_window_class() {
   static lean_external_class *g_glfw_window_class = NULL;
-	if (!g_glfw_window_class) {
-		g_glfw_window_class = lean_register_external_class(
-				&glfw_window_finalizer,
-				&noop_foreach);
-	}
-	return g_glfw_window_class;
+  if (!g_glfw_window_class) {
+    g_glfw_window_class = lean_register_external_class(
+      &glfw_window_finalizer,
+      &noop_foreach);
+  }
+  return g_glfw_window_class;
 }
 
 // @[extern "lean_glfwCreateWindow"]
 // opaque glfwCreateWindow (width : UInt32) (height : UInt32) (title : String) : IO Window
 lean_obj_res lean_glfwCreateWindow(uint32_t width, uint32_t height, b_lean_obj_arg title, lean_obj_arg world) {
-	printf("lean_glfwCreateWindow %dx%d\n", width, height); // Here for debugging
-	char const *title_cstr = lean_string_cstr(title);
-	GLFWwindow *win = glfwCreateWindow(width, height, title, NULL, NULL); // Returns (GLFWwindow *)!
-	return lean_io_result_mk_ok(lean_alloc_external(get_glfw_window_class(), win));
+  printf("lean_glfwCreateWindow %dx%d\n", width, height); // Here for debugging
+  char const *title_cstr = lean_string_cstr(title);
+  GLFWwindow *win = glfwCreateWindow(width, height, title, NULL, NULL); // Returns (GLFWwindow *)!
+  return lean_io_result_mk_ok(lean_alloc_external(get_glfw_window_class(), win));
 }
 
 // where...
@@ -454,12 +454,12 @@ Here is the function again:
 // def Window := WindowP.type
 static lean_external_class *get_glfw_window_class() {
   static lean_external_class *g_glfw_window_class = NULL;
-	if (!g_glfw_window_class) {
-		g_glfw_window_class = lean_register_external_class(
-				&glfw_window_finalizer,
-				&noop_foreach);
-	}
-	return g_glfw_window_class;
+  if (!g_glfw_window_class) {
+    g_glfw_window_class = lean_register_external_class(
+      &glfw_window_finalizer,
+      &noop_foreach);
+  }
+  return g_glfw_window_class;
 }
 
 // where...
@@ -475,7 +475,7 @@ Essentially, we are calling `lean_register_external_class` to tell Lean4 to crea
 static void glfw_window_finalizer(void *ptr) {
   // Here, I defined it to destroy the GLFWwindow object as an example.
   // In reality, I would put nothing here, and instead write a new opaque Lean4 function + C function for this destroying windows explicitly.
-	glfwDestroyWindow((GLFWwindow *) ptr);
+  glfwDestroyWindow((GLFWwindow *) ptr);
 }
 ```
 
@@ -484,7 +484,7 @@ static void glfw_window_finalizer(void *ptr) {
 2. and `GLFWwindow *` points to an handle object instead of the start of an array of something.
 ```c
 static void noop_foreach(void *data, b_lean_obj_arg arg) {
-	// NOTHING
+  // NOTHING
 }
 ```
 
@@ -512,12 +512,12 @@ Finally, let's implement `lean_glfwWindowShouldClose`:
 // @[extern "lean_glfwWindowShouldClose"]
 // opaque glfwWindowShouldClose (win : Window) : IO Bool // [!] Takes in `Window`
 lean_obj_res lean_glfwWindowShouldClose(lean_obj_arg winp, lean_obj_arg world) {
-	assert(lean_is_external(winp)); // For debugging
+  assert(lean_is_external(winp)); // For debugging
 
   // This is how we extract the `void *data` from a `lean_obj_arg` if the arg is indeed representing some external data.
-	GLFWwindow * win = (GLFWwindow *) lean_get_external_data(winp);
-	bool status = glfwWindowShouldClose(win);
-	return lean_io_result_mk_ok(lean_box(status));
+  GLFWwindow * win = (GLFWwindow *) lean_get_external_data(winp);
+  bool status = glfwWindowShouldClose(win);
+  return lean_io_result_mk_ok(lean_box(status));
 }
 
 // where...
