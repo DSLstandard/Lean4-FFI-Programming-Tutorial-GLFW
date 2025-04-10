@@ -469,7 +469,7 @@ Here is the function signature of `lean_alloc_external` from `lean/lean.h`:
 lean_object * lean_alloc_external(lean_external_class *cls, void *data);
 ```
 
-`lean_external_class` is used by Lean4 internally to understand more about the `void *data` you pass in. It *apparently* two purposes:
+`lean_external_class` is used by Lean4 internally to understand more about the `void *data` you pass in. It *apparently* has two purposes:
 1. to tell how to deallocate/finalize `data` when the `lean_object *` goes out of scope in your Lean4 program,
 2. (My guess) to tell how to iterate over `data`. (Like how you can have `char *c` and do `c + 3` to get the address of the 3rd `char` by displacement.)
 
@@ -538,7 +538,7 @@ Now, this should clarify what `lean_glfwCreateWindow` does.
 
 ### On `Window`, `WindowP` and the `GLFWwindow *` opaque type
 
-As for the opaque `Window`/`WindowP` definition in our `./Main.lean`, we as programmers will have to make sure that whenever a `GLFWwindow *` is the return type or a argument type in our functions, we will must use `Window` in our Lean4 code.
+As for the opaque `Window`/`WindowP` definition in our `./Main.lean`, we as programmers will have to make sure that whenever a `GLFWwindow *` is the return type or a argument type in our functions, we must use `Window` in our Lean4 code.
 
 ```
 opaque WindowP : NonemptyType
@@ -620,4 +620,4 @@ All the code is in this repository. Do `$ ./run.sh` to build and run the final G
 
 # TODOs
 - [ ] Investigate on constructing `lean_obj_res *` objects of Lean4 inductive types in C.
-- [ ] Understand what the borrowing is and how it affects programming an FFI.
+- [ ] Understand what borrowing is and how it affects programming an FFI.
