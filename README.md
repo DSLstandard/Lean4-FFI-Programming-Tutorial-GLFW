@@ -4,6 +4,16 @@ There seems to be no complete tutorial on creating C FFI bindings in Lean4. So I
 - https://lean-lang.org/lean4/doc/dev/ffi.html (it seems to be outdated as it uses a keyword called `constant`, which does not actually exist in Lean4).
 - https://github.com/leanprover/lean4/tree/master/src/lake/examples/ffi
 
+## Lean4 Version
+
+This project has been tested on these versions of Lean4 and Lake:
+
+```
+$ lean --version
+Lean (version 4.21.0, commit v4.21.0, Release)
+$ lake --version
+Lake version 5.0.0-v4.21.0 (Lean version 4.21.0)
+```
 
 ## Introduction
 
