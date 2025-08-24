@@ -4,6 +4,16 @@ There seems to be no complete tutorial on creating C FFI bindings in Lean4. So I
 - https://lean-lang.org/lean4/doc/dev/ffi.html (it seems to be outdated as it uses a keyword called `constant`, which does not actually exist in Lean4).
 - https://github.com/leanprover/lean4/tree/master/src/lake/examples/ffi
 
+## Lean4 Version
+
+This project has been tested on these versions of Lean4 and Lake:
+
+```
+$ lean --version
+Lean (version 4.21.0, commit v4.21.0, Release)
+$ lake --version
+Lake version 5.0.0-v4.21.0 (Lean version 4.21.0)
+```
 
 ## Introduction
 
@@ -20,7 +30,15 @@ In short, you will basically have to: (You can skip this paragraph if you want a
 2. Modify your `lakefile.lean` to...
     1. compile the `.c` file to produce a static lib,
     2. and add the necessary compilation/linking flags to link `libglfw.so` and the static lib of the `.c` to your Lean4 application executable whenever you do `$ lake build`.
+    3. **(TIP: If you are new to writing a `lakefile.lean`, see https://github.com/leanprover/lean4/blob/master/src/lake/README.md and the directory `examples/` in there)**
 3. Write `opaque` Lean4 definitions in a `.lean` module in your Lean4 project that point to the certain functions written in that `.c` file. You might also have to define some opaque structures if the FFI functions return pointers to, say, a C handle object.
+
+### // Sidenote
+
+For convenience - if you know how to use `nix`, you can do `nix develop` to pull
+in the necessary dependencies. There is a `flake.nix` in this repository with a
+devShell that installs `lean4` and `glfw3` for you. After `nix develop`, you
+should be able to directly run `./run.sh` to execute the sample FFI program.
 
 ## A brief introduction on GLFW
 
@@ -618,6 +636,10 @@ def main : IO Unit := do
 
 All the code is in this repository. Do `$ ./run.sh` to build and run the final GLFW example app.
 
-# TODOs
-- [ ] Investigate on constructing `lean_obj_res *` objects of Lean4 inductive types in C.
-- [ ] Understand what borrowing is and how it affects programming an FFI.
+# Extra readings
+
+- To learn more about FFI in Lean4, you may want to go to
+  https://github.com/leanprover/lean4/blob/master/doc/dev/ffi.md.
+- To learn about writing a `lakefile.lean` (or `lakefile.toml`), see
+  https://github.com/leanprover/lean4/blob/master/src/lake/README.md and the
+  directory `examples/` in there.
