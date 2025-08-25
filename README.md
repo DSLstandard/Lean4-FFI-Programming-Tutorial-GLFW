@@ -1,3 +1,6 @@
+# !!!! Go read someone else's guide !!!!
+The guide https://gist.github.com/ydewit/7ab62be1bd0fea5bd53b48d23914dd6b (Found on https://leanprover.zulipchat.com/#narrow/channel/270676-lean4/topic/Understanding.20Lean%27s.20Foreign.20Function.20Interface.20.28FFI.29/near/452101098) is ***way*** more comprehensive than mine and covers much more than what I have in this `README.md`. I strongly recommend you to read that guide.
+
 # Notes on doing C FFI in Lean4
 There seems to be no complete tutorial on creating C FFI bindings in Lean4. So I am writing notes here. I am putting the keyword "tutorial" in the GitHub project name just so people who search "Lean4 FFI tutorial" will land on this and hopefully get some guidances, but by no means does this markdown serve as a complete, 100% correct tutorial. I don't even know what is going on half of the time when reading the sources:
 - `src/include/lean/lean.h` in https://github.com/leanprover/lean4
